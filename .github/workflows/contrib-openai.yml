@@ -241,6 +241,7 @@ jobs:
           docker --version
           python -m pip install --upgrade pip wheel
           pip install -e .
+          pip install docker
           python -c "import autogen"
           pip install coverage pytest-asyncio
       - name: Install packages and dependencies for redis
