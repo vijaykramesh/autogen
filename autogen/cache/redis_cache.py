@@ -60,6 +60,7 @@ class RedisCache(AbstractCache):
             The deserialized value associated with the key if found, else the default value.
         """
         result = self.cache.get(self._prefixed_key(key))
+        print("test")
         if result is None:
             return default
         return pickle.loads(result)
