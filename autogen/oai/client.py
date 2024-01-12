@@ -8,7 +8,6 @@ import inspect
 from flaml.automl.logger import logger_formatter
 
 from pydantic import BaseModel
-
 from autogen.oai import completion
 
 from autogen.oai.openai_utils import get_key, OAI_PRICE1K
@@ -34,7 +33,9 @@ else:
     )
     from openai.types.completion import Completion
     from openai.types.completion_usage import CompletionUsage
-    import diskcache
+
+    # cache wrapper
+    from autogen.cache.cache_factory import cache_factory
 
     if openai.__version__ >= "1.1.0":
         TOOL_ENABLED = True
@@ -51,8 +52,7 @@ if not logger.handlers:
 class OpenAIWrapper:
     """A wrapper class for openai client."""
 
-    cache_path_root: str = ".cache"
-    extra_kwargs = {"cache_seed", "filter_func", "allow_format_str_template", "context", "api_version"}
+    extra_kwargs = {"cache_seed", "redis_url", "filter_func", "allow_format_str_template", "context", "api_version"}
     openai_kwargs = set(inspect.getfullargspec(OpenAI.__init__).kwonlyargs)
     total_usage_summary: Optional[Dict[str, Any]] = None
     actual_usage_summary: Optional[Dict[str, Any]] = None
@@ -221,6 +221,10 @@ class OpenAIWrapper:
             - `cache_seed` (int | None) for the cache. Default to 41.
                 An integer cache_seed is useful when implementing "controlled randomness" for the completion.
                 None for no caching.
+            - `redis_url` (str | None) for the redis cache. Default to None.
+                A string redis_url formatted like "redis://:password@localhost:6379/0" will turn on the redis cache.
+                None for no redis cache. If `cache_seed` is None, redis_url will be ignored
+                You must install redis to use redis cache.
             - filter_func (Callable | None): A function that takes in the context and the response
                 and returns a boolean to indicate whether the response is valid. E.g.,
 
@@ -248,12 +252,13 @@ class OpenAIWrapper:
             params = self._construct_create_params(create_config, extra_kwargs)
             # get the cache_seed, filter_func and context
             cache_seed = extra_kwargs.get("cache_seed", 41)
+            redis_url = extra_kwargs.get("redis_url", None)
             filter_func = extra_kwargs.get("filter_func")
             context = extra_kwargs.get("context")
 
             # Try to load the response from cache
             if cache_seed is not None:
-                with diskcache.Cache(f"{self.cache_path_root}/{cache_seed}") as cache:
+                with cache_factory(f"{cache_seed}", redis_url) as cache:
                     # Try to get the response from cache
                     key = get_key(params)
                     response: ChatCompletion = cache.get(key, None)
@@ -290,7 +295,7 @@ class OpenAIWrapper:
                 self._update_usage_summary(response, use_cache=False)
                 if cache_seed is not None:
                     # Cache the response
-                    with diskcache.Cache(f"{self.cache_path_root}/{cache_seed}") as cache:
+                    with cache_factory(f"{cache_seed}", redis_url) as cache:
                         cache.set(key, response)
 
                 # check the filter
